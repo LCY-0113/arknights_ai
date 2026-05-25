@@ -14,6 +14,7 @@ build/
 
 # 录制数据（太大）
 expert_trajectories.json
+game_memory.jsonl
 *.mp4
 
 # 密钥 & API key

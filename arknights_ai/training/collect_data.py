@@ -1,29 +1,57 @@
-# training/collect_data.py
-import time
+from __future__ import annotations
+
+import argparse
 import json
-from env.perception import MAAPerception
-from env.adb_controller import ADBController   # 你需要自己实现简单的点击
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+try:
+    from agents.tactical_model import heuristic_action
+    from env.adb_controller import ADBController
+    from env.perception import MAAPerception
+except ImportError:  # pragma: no cover
+    from arknights_ai.agents.tactical_model import heuristic_action
+    from arknights_ai.env.adb_controller import ADBController
+    from arknights_ai.env.perception import MAAPerception
+
 
 class DataCollector:
-    def __init__(self):
-        self.perception = MAAPerception()
-        self.adb = ADBController()
-        self.dataset = []
+    def __init__(self, max_steps: int = 50, dry_run: bool = True):
+        self.perception = MAAPerception(max_mock_steps=max_steps)
+        self.adb = ADBController(dry_run=dry_run)
+        self.dataset: list[dict] = []
+        self.max_steps = max_steps
 
-    def record_episode(self):
-        """
-        运行一局游戏，记录人类（或 MAA）的操作。
-        我们可以在 MAA 执行操作的同时，记录它做出的决策。
-        """
+    def record_episode(self, output: str = "expert_trajectories.json") -> list[dict]:
         state = self.perception.get_state()
-        while state["scene"] == "battle":
-            # 这里我们需要 hook 到 MAA 的动作输出
-            # 简单起见，这里假设从 MAA 日志中读取动作
-            action = self._get_maa_action()
-            self.dataset.append((state, action))
-            time.sleep(0.1)   # 等待下一帧
+        steps = 0
+        while state.get("scene") == "battle" and steps < self.max_steps:
+            action = self._get_maa_action(state)
+            self.dataset.append({"state": state, "action": action.to_dict()})
+            time.sleep(0.1)
             state = self.perception.get_state()
+            steps += 1
 
-        # 保存数据
-        with open("expert_trajectories.json", "w") as f:
-            json.dump(self.dataset, f, default=str)
+        with open(output, "w", encoding="utf-8") as f:
+            json.dump(self.dataset, f, ensure_ascii=False, indent=2, default=str)
+        return self.dataset
+
+    def _get_maa_action(self, state):
+        return heuristic_action(state)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Collect mock or MAA-derived expert trajectories.")
+    parser.add_argument("--output", default="expert_trajectories.json")
+    parser.add_argument("--max-steps", type=int, default=50)
+    parser.add_argument("--dry-run", action=argparse.BooleanOptionalAction, default=True)
+    args = parser.parse_args()
+    dataset = DataCollector(max_steps=args.max_steps, dry_run=args.dry_run).record_episode(args.output)
+    print(f"saved {len(dataset)} samples to {args.output}")
+
+
+if __name__ == "__main__":
+    main()

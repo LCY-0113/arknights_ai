@@ -1,67 +1,88 @@
-# training/train_tactical.py
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
-import json
+from torch.utils.data import DataLoader, Dataset
 
-# ---------- 数据预处理 ----------
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+try:
+    from agents.tactical_model import SEQ_LEN, TacticalTransformer, action_to_index, state_to_vector
+except ImportError:  # pragma: no cover
+    from arknights_ai.agents.tactical_model import SEQ_LEN, TacticalTransformer, action_to_index, state_to_vector
+
+
 class ArknightsDataset(Dataset):
-    def __init__(self, json_path):
-        with open(json_path, 'r') as f:
+    def __init__(self, json_path: str):
+        path = Path(json_path)
+        if not path.exists():
+            raise FileNotFoundError(f"训练数据不存在: {json_path}")
+        with open(path, "r", encoding="utf-8") as f:
             self.data = json.load(f)
-        # 构建动作字典
-        self.action2idx = {...}  # 将动作映射为整数
+        if len(self.data) < SEQ_LEN:
+            raise ValueError(f"训练数据至少需要 {SEQ_LEN} 帧")
 
     def __len__(self):
-        return len(self.data) - 5   # 需要 5 帧序列
+        return len(self.data) - SEQ_LEN + 1
 
     def __getitem__(self, idx):
-        # 取连续 5 帧状态
         states = []
-        for i in range(idx, idx+5):
-            state = self.data[i][0]
-            states.append(self._state_to_tensor(state))
-        states = torch.stack(states)          # (5, state_dim)
-        action = self.action2idx[self.data[idx+4][1]]
-        return states, torch.tensor(action)
+        for i in range(idx, idx + SEQ_LEN):
+            state = self._extract_state(self.data[i])
+            states.append(torch.from_numpy(state_to_vector(state)))
+        action = self._extract_action(self.data[idx + SEQ_LEN - 1])
+        return torch.stack(states), torch.tensor(action_to_index(action), dtype=torch.long)
 
-    def _state_to_tensor(self, state):
-        # 特征工程：将 JSON 状态转为固定长度向量
-        # 你可以用简单的编码（one-hot + 数值归一化）
-        pass
+    @staticmethod
+    def _extract_state(item):
+        if isinstance(item, dict):
+            return item.get("state", item)
+        return item[0]
 
-# ---------- 模型定义 ----------
-class TacticalTransformer(nn.Module):
-    def __init__(self, state_dim=128, num_actions=50, seq_len=5):
-        super().__init__()
-        self.encoder = nn.Linear(state_dim, 256)
-        transformer_layer = nn.TransformerEncoderLayer(d_model=256, nhead=8)
-        self.transformer = nn.TransformerEncoder(transformer_layer, num_layers=2)
-        self.fc = nn.Linear(256, num_actions)
+    @staticmethod
+    def _extract_action(item):
+        if isinstance(item, dict):
+            return item.get("action", {"type": "wait"})
+        return item[1]
 
-    def forward(self, x):
-        # x: (batch, seq_len, state_dim)
-        x = torch.relu(self.encoder(x))
-        x = x.permute(1, 0, 2)   # (seq_len, batch, dim)
-        x = self.transformer(x)
-        x = x[-1]                # 取最后一帧的输出
-        return self.fc(x)
 
-# ---------- 训练循环 ----------
-def train():
-    dataset = ArknightsDataset("expert_trajectories.json")
-    loader = DataLoader(dataset, batch_size=32, shuffle=True)
+def train(args=None):
+    args = args or build_parser().parse_args()
+    dataset = ArknightsDataset(args.data)
+    loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
     model = TacticalTransformer()
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     criterion = nn.CrossEntropyLoss()
 
-    for epoch in range(50):
+    for epoch in range(args.epochs):
+        total_loss = 0.0
         for states, actions in loader:
             logits = model(states)
             loss = criterion(logits, actions)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-        print(f"Epoch {epoch}, Loss: {loss.item():.4f}")
+            total_loss += float(loss.item())
+        print(f"Epoch {epoch + 1}/{args.epochs}, loss={total_loss / max(len(loader), 1):.4f}")
 
-    torch.save(model.state_dict(), "tactical_model.pth")
+    torch.save(model.state_dict(), args.output)
+    return model
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(description="Train tactical behavior cloning model.")
+    parser.add_argument("--data", default="expert_trajectories.json")
+    parser.add_argument("--output", default="tactical_model.pth")
+    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--lr", type=float, default=1e-3)
+    return parser
+
+
+if __name__ == "__main__":
+    train()
