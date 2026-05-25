@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+
+# 模型权重 & 大数据文件
+*.pth
+*.onnx
+*.bin
+*.pt
+
+# 录制数据（太大）
+expert_trajectories.json
+*.mp4
+
+# 密钥 & API key
+.env
+*.key
+
+# IDE
+.vscode/
+.idea/
