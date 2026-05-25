@@ -48,7 +48,12 @@ def run_episode(args: argparse.Namespace) -> list[dict]:
     planner = StrategicPlanner(offline=args.offline_llm)
     memory = GameMemory(storage_path=args.memory)
     perception = MAAPerception(max_mock_steps=args.max_steps)
-    adb = ADBController(dry_run=args.dry_run, device=args.device)
+    adb = ADBController(
+        adb_path=args.adb_path,
+        dry_run=args.dry_run,
+        device=args.device,
+        coordinate_map_path=args.coordinate_map,
+    )
 
     episode_log: list[dict] = []
     state = perception.get_state()
@@ -77,6 +82,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-steps", type=int, default=20)
     parser.add_argument("--interval", type=float, default=0.05)
     parser.add_argument("--device", default=None)
+    parser.add_argument("--adb-path", default="adb")
+    parser.add_argument("--coordinate-map", default=None)
     parser.add_argument("--dry-run", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--offline-llm", action=argparse.BooleanOptionalAction, default=None)
     return parser

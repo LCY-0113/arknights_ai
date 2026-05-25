@@ -19,9 +19,21 @@ except ImportError:  # pragma: no cover
 
 
 class DataCollector:
-    def __init__(self, max_steps: int = 50, dry_run: bool = True):
+    def __init__(
+        self,
+        max_steps: int = 50,
+        dry_run: bool = True,
+        adb_path: str = "adb",
+        device: str | None = None,
+        coordinate_map: str | None = None,
+    ):
         self.perception = MAAPerception(max_mock_steps=max_steps)
-        self.adb = ADBController(dry_run=dry_run)
+        self.adb = ADBController(
+            adb_path=adb_path,
+            dry_run=dry_run,
+            device=device,
+            coordinate_map_path=coordinate_map,
+        )
         self.dataset: list[dict] = []
         self.max_steps = max_steps
 
@@ -47,9 +59,18 @@ def main():
     parser = argparse.ArgumentParser(description="Collect mock or MAA-derived expert trajectories.")
     parser.add_argument("--output", default="expert_trajectories.json")
     parser.add_argument("--max-steps", type=int, default=50)
+    parser.add_argument("--device", default=None)
+    parser.add_argument("--adb-path", default="adb")
+    parser.add_argument("--coordinate-map", default=None)
     parser.add_argument("--dry-run", action=argparse.BooleanOptionalAction, default=True)
     args = parser.parse_args()
-    dataset = DataCollector(max_steps=args.max_steps, dry_run=args.dry_run).record_episode(args.output)
+    dataset = DataCollector(
+        max_steps=args.max_steps,
+        dry_run=args.dry_run,
+        adb_path=args.adb_path,
+        device=args.device,
+        coordinate_map=args.coordinate_map,
+    ).record_episode(args.output)
     print(f"saved {len(dataset)} samples to {args.output}")
 
 

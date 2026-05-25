@@ -73,3 +73,10 @@ python arknights_ai\main.py --no-dry-run --device <adb-device-id>
 ```
 
 `ADBController` 支持传入坐标配置 JSON，后续可以把干员栏、撤退按钮、网格原点和格子大小放进去，替代默认坐标。
+
+MuMu 示例：
+
+```powershell
+adb connect 127.0.0.1:<mumu-adb-port>
+python arknights_ai\main.py --device 127.0.0.1:<mumu-adb-port> --adb-path adb --max-steps 5
+```
